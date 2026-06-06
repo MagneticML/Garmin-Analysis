@@ -1,22 +1,31 @@
-"""Parse Garmin .fit running files (inside .zip downloads) into a per-lap CSV.
+"""Parse Garmin .fit running files (inside .zip exports) into a per-lap CSV.
 
-Reads every *.zip in the Downloads folder, pulls the single *_ACTIVITY.fit out of
+Reads every *.zip in the data folder, pulls the single *_ACTIVITY.fit out of
 each, and emits one row per lap with running-friendly units (miles, km, min/mile
 pace, etc.) alongside the raw Garmin values.
 
 Usage:
-    python parse_fit_to_csv.py
+    python parse_fit_to_csv.py                       # uses the default folder below
+    python parse_fit_to_csv.py "C:\\path\\to\\zips"    # or point it at any folder
 """
 
 import csv
 import io
+import sys
 import zipfile
 from pathlib import Path
 
 from fitparse import FitFile
 
-DOWNLOADS = Path.home() / "Downloads"
-OUTPUT_CSV = DOWNLOADS / "garmin_laps.csv"
+# Where the Garmin .zip exports live. Override by passing a folder as the first
+# command-line argument.
+DEFAULT_DATA_DIR = Path.home() / "Documents" / "Garmin Files"
+
+
+def resolve_data_dir():
+    if len(sys.argv) > 1:
+        return Path(sys.argv[1])
+    return DEFAULT_DATA_DIR
 
 # --- unit conversions ---------------------------------------------------------
 METERS_PER_MILE = 1609.344
@@ -166,9 +175,15 @@ def iter_laps(zip_path):
 
 
 def main():
-    zips = sorted(DOWNLOADS.glob("*.zip"))
+    data_dir = resolve_data_dir()
+    output_csv = data_dir / "garmin_laps.csv"
+
+    if not data_dir.is_dir():
+        raise SystemExit(f"Folder does not exist: {data_dir}")
+
+    zips = sorted(data_dir.glob("*.zip"))
     if not zips:
-        raise SystemExit(f"No .zip files found in {DOWNLOADS}")
+        raise SystemExit(f"No .zip files found in {data_dir}")
 
     rows = []
     for zip_path in zips:
@@ -184,12 +199,12 @@ def main():
     rows.sort(key=lambda r: (str(r["start_time"]), r["lap_num"] or 0))
 
     fieldnames = list(rows[0].keys())
-    with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
+    with open(output_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"\nWrote {len(rows)} lap rows from {len(zips)} runs -> {OUTPUT_CSV}")
+    print(f"\nWrote {len(rows)} lap rows from {len(zips)} runs -> {output_csv}")
 
 
 if __name__ == "__main__":
