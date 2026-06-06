@@ -13,6 +13,7 @@ import csv
 import io
 import sys
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 from fitparse import FitFile
@@ -161,16 +162,41 @@ def build_row(activity_id, source_file, lap):
     }
 
 
+def local_utc_offset(raw):
+    """Offset (local - UTC) for this activity, or None if unavailable.
+
+    FIT timestamps are stored in UTC, but the watch also records a
+    `local_timestamp` in the 'activity' message. Their difference is the
+    activity's UTC offset (DST-correct, since it's captured at record time),
+    which we add to UTC timestamps to match what the Garmin app shows.
+    """
+    fit = FitFile(io.BytesIO(raw))
+    for msg in fit.get_messages("activity"):
+        utc = msg.get_value("timestamp")
+        local = msg.get_value("local_timestamp")
+        if utc and local:
+            return local - utc
+    return None
+
+
 def iter_laps(zip_path):
-    """Yield (activity_id, fit_filename, lap_dict) for each lap in a zip."""
+    """Yield (activity_id, fit_filename, lap_dict) for each lap in a zip.
+
+    Lap start_time / timestamp are converted from UTC to local time.
+    """
     with zipfile.ZipFile(zip_path) as zf:
         fit_name = next(n for n in zf.namelist() if n.lower().endswith(".fit"))
         raw = zf.read(fit_name)
 
     activity_id = zip_path.stem  # e.g. "22938014424"
+    offset = local_utc_offset(raw)
     fit = FitFile(io.BytesIO(raw))
     for msg in fit.get_messages("lap"):
         lap = {field.name: field.value for field in msg}
+        if offset is not None:
+            for key in ("start_time", "timestamp"):
+                if isinstance(lap.get(key), datetime):
+                    lap[key] = lap[key] + offset
         yield activity_id, fit_name, lap
 
 
