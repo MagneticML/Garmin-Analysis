@@ -16,7 +16,7 @@ Tools for turning Garmin Connect `.fit` running exports into usable data.
 ## Setup
 
 ```bash
-pip install fitparse
+pip install -r requirements.txt
 ```
 
 ## Usage
